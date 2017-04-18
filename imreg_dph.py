@@ -22,12 +22,28 @@ class AffineTransform(AffineTransformBase):
     def __eq__(self, other):
         return np.array_equal(self.params, other.params)
 
+    @property
     def inverse(self):
         return AffineTransform(matrix=np.linalg.inv(self.params))
+
+    def __repr__(self):
+        return self.params.__repr__()
+
+    def __str__(self):
+        return self.__repr__()
 
 
 AffineTransform.__init__.__doc__ = AffineTransformBase.__init__.__doc__
 AffineTransform.__doc__ = AffineTransformBase.__doc__
+
+
+def highpass(shape):
+    """Return highpass filter to be multiplied with fourier transform."""
+    # inverse cosine filter.
+    x = np.outer(
+        np.cos(np.linspace(-np.pi/2., np.pi/2., shape[0])),
+        np.cos(np.linspace(-np.pi/2., np.pi/2., shape[1])))
+    return (1.0 - x) * (2.0 - x)
 
 
 def localize_peak(data):
@@ -92,14 +108,15 @@ def translation(im0, im1):
     shape = im0.shape
     f0 = fft2(im0)
     f1 = fft2(im1)
-    ir = abs(ifft2((f0 * f1.conjugate()) / (abs(f0) * abs(f1))))
+    ir = fftshift(abs(ifft2((f0 * f1.conjugate()) / (abs(f0) * abs(f1)))))
     t0, t1 = np.unravel_index(np.argmax(ir), shape)
     dt0, dt1 = localize_peak(ir[slice_maker(t0, t1, 3)])
-    t0, t1 = t0 + dt0, t1 + dt1,
-    if t0 > shape[0] // 2:
-        t0 -= shape[0]
-    if t1 > shape[1] // 2:
-        t1 -= shape[1]
+    # t0, t1 = t0 + dt0, t1 + dt1
+    t0, t1 = np.array((t0, t1)) + np.array((dt0, dt1)) - np.array(shape) // 2
+    # if t0 > shape[0] // 2:
+    #     t0 -= shape[0]
+    # if t1 > shape[1] // 2:
+    #     t1 -= shape[1]
     return AffineTransform(translation=(-t1, -t0))
 
 
@@ -211,4 +228,4 @@ def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE, num_iter=50, term_eps=1e
     # Run the ECC algorithm. The results are stored in warp_matrix.
     cc, warp_matrix = cv2.findTransformECC (im0, im1, warp_matrix, warp_mode, criteria)
 
-    return AffineTransform2(matrix=np.vstack((warp_matrix, (0, 0, 1))))
+    return AffineTransform(matrix=np.vstack((warp_matrix, (0, 0, 1))))

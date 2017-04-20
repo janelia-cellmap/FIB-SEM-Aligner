@@ -267,7 +267,7 @@ def similarity(im0, im1):
     ir = abs(ir_cmplx)
     # find max
     i0, i1 = np.array(np.unravel_index(np.argmax(ir), ir.shape))
-    di0, di1 = localize_peak(ir[slice_maker(i0, i1, 5)])
+    di0, di1 = localize_peak(ir[slice_maker(i0, i1, 3)])
     i0, i1 = i0 + di0, i1 + di1
     # calculate the angle
     angle = i0 / ir.shape[0]
@@ -306,15 +306,25 @@ def similarity(im0, im1):
     return af
 
 
-def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE, num_iter=50, term_eps=1e-3):
-    """
-    # Specify the number of iterations.
+def _convert_for_cv(im0):
+    """Utility function to convert images to the right type."""
+    # right now it doesn't do anything...
+    return im0
 
-    # Specify the threshold of the increment
-    # in the correlation coefficient between two iterations;
+
+def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE,
+                 num_iter=50, term_eps=1e-3):
+    """Register im1 to im0 using findTransformECC from OpenCV
+
+    Parameters
+    ----------
+    im0 : ndarray (2d)
+    im1 : ndarray (2d)
+
     """
-    # Find size of image1
-    sz = im0.shape
+    # make sure images are right type
+    im0 = _convert_for_cv(im0)
+    im1 = _convert_for_cv(im1)
 
     # Define 2x3 or 3x3 matrices and initialize the matrix to identity
     if warp_mode == cv2.MOTION_HOMOGRAPHY:
@@ -323,10 +333,10 @@ def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE, num_iter=50, term_eps=1e
         warp_matrix = np.eye(2, 3, dtype=np.float32)
 
     # Define termination criteria
-    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, num_iter,  term_eps)
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, num_iter, term_eps)
 
     # Run the ECC algorithm. The results are stored in warp_matrix.
-    cc, warp_matrix = cv2.findTransformECC (im0, im1, warp_matrix, warp_mode, criteria)
+    cc, warp_matrix = cv2.findTransformECC(im0, im1, warp_matrix, warp_mode, criteria)
 
     return AffineTransform(matrix=np.vstack((warp_matrix, (0, 0, 1))))
 
@@ -334,6 +344,29 @@ def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE, num_iter=50, term_eps=1e
 def register_translation(im0, im1, upsample_factor=100):
     """Right now this uses the numpy fft implementation, we can speed it up by
     dropping in fftw if we need to"""
+    # run the skimage code
     shifts, error, phasediff = register_translation_base(im0, im1, upsample_factor)
-    af = AffineTransform(translation=shifts)
+    # the shifts it returns are negative and reversed of what we're expecting.
+    af = AffineTransform(translation=-shifts[::-1])
     return af
+
+
+def dual_registration(im0, im1, warp_mode=cv2.MOTION_AFFINE):
+    af0 = similarity(im0, im1)
+    im2 = warp(im1, af0).astype(im0.dtype)
+    af1 = register_ECC(im0, im2, warp_mode=warp_mode)
+    return af0 @ af1
+
+
+def cv_warp(im, af, shape=None, **kwargs):
+    """Driver function for cv2.warpAffine
+    cv::INTER_NEAREST = 0,
+    cv::INTER_LINEAR = 1,
+    cv::INTER_CUBIC = 2,
+    cv::INTER_AREA = 3,
+    cv::INTER_LANCZOS4 = 4, """
+    if shape is None:
+        shape = im.shape
+    default_kwargs = dict(flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+    default_kwargs.update(kwargs)
+    return cv2.warpAffine(im, af.params[:2], shape[::-1], **default_kwargs)

@@ -1,9 +1,10 @@
 import numpy as np
+import scipy.ndimage.interpolation as ndii
 # three different registration packages
 # not dft based
 import cv2
 # dft based
-from skimage.feature import register_translation
+from skimage.feature import register_translation as register_translation_base
 from skimage.transform import warp
 from skimage.transform import AffineTransform as AffineTransformBase
 import pyfftw
@@ -29,7 +30,10 @@ class AffineTransform(AffineTransformBase):
         return self.params.__repr__()
 
     def __str__(self):
-        return self.__repr__()
+        string = ("<AffineTransform: translation = {}, rotation ={:.2f},"
+                  " scale = {}, shear = {:.2f}>")
+        return string.format(np.round(self.translation, 2), np.rad2deg(self.rotation),
+                      np.round(np.array(self.scale), 2), np.rad2deg(self.shear))
 
 
 AffineTransform.__init__.__doc__ = AffineTransformBase.__init__.__doc__
@@ -188,8 +192,8 @@ def logpolar(image, angles=None, radii=None):
         radii = shape[1]
     theta = np.empty((angles, radii), dtype=np.float64)
     theta.T[:] = -np.linspace(0, np.pi, angles, endpoint=False)
-    #d = radii
-    d = np.hypot(shape[0]-center[0], shape[1]-center[1])
+    # d = radii
+    d = np.hypot(shape[0] - center[0], shape[1] - center[1])
     log_base = 10.0 ** (np.log10(d) / (radii))
     radius = np.empty_like(theta)
     radius[:] = np.power(log_base, np.arange(radii, dtype=np.float64)) - 1.0
@@ -298,9 +302,8 @@ def similarity(im0, im1):
     im2 = warp(im1, af)
     # now calculate translation
     af @= translation(im0, im2)
-    im2 = warp(im1, af)
 
-    return im2, af
+    return af
 
 
 def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE, num_iter=50, term_eps=1e-3):
@@ -326,3 +329,11 @@ def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE, num_iter=50, term_eps=1e
     cc, warp_matrix = cv2.findTransformECC (im0, im1, warp_matrix, warp_mode, criteria)
 
     return AffineTransform(matrix=np.vstack((warp_matrix, (0, 0, 1))))
+
+
+def register_translation(im0, im1, upsample_factor=100):
+    """Right now this uses the numpy fft implementation, we can speed it up by
+    dropping in fftw if we need to"""
+    shifts, error, phasediff = register_translation_base(im0, im1, upsample_factor)
+    af = AffineTransform(translation=shifts)
+    return af

@@ -9,7 +9,6 @@ from skimage.transform import AffineTransform as AffineTransformBase
 import pyfftw
 pyfftw.interfaces.cache.enable()
 from pyfftw.interfaces.numpy_fft import *
-from dphutils import slice_maker
 
 
 class AffineTransform(AffineTransformBase):
@@ -35,6 +34,104 @@ class AffineTransform(AffineTransformBase):
 
 AffineTransform.__init__.__doc__ = AffineTransformBase.__init__.__doc__
 AffineTransform.__doc__ = AffineTransformBase.__doc__
+
+
+def slice_maker(y0, x0, width):
+    """
+    A utility function to generate slices for later use.
+
+    Parameters
+    ----------
+    y0 : int
+        center y position of the slice
+    x0 : int
+        center x position of the slice
+    width : int
+        Width of the slice
+
+    Returns
+    -------
+    slices : list
+        A list of slice objects, the first one is for the y dimension and
+        and the second is for the x dimension.
+
+    Notes
+    -----
+    The method will automatically coerce slices into acceptable bounds.
+
+    Examples
+    --------
+    >>> slice_maker(30,20,10)
+    [slice(25, 35, None), slice(15, 25, None)]
+    >>> slice_maker(30,20,25)
+    [slice(18, 43, None), slice(8, 33, None)]
+    """
+    if not np.isrealobj((y0, x0, width)):
+        raise TypeError("`slice_maker` only accepts real input")
+    if width < 0:
+        raise ValueError("width cannot be negative, width = {}".format(width))
+    # ensure integers
+    y0, x0 = np.rint((y0, x0)).astype(int)
+    width = int(np.rint(width))
+    # use _calc_pad
+    half2, half1 = _calc_pad(0, width)
+    ystart = y0 - half1
+    xstart = x0 - half1
+    yend = y0 + half2
+    xend = x0 + half2
+    assert ystart <= yend, "ystart > yend"
+    assert xstart <= xend, "xstart > xend"
+    if yend <= 0:
+        ystart, yend = 0, 0
+    if xend <= 0:
+        xstart, xend = 0, 0
+    # the max calls are to make slice_maker play nice with edges.
+    toreturn = [slice(max(0, ystart), yend), slice(max(0, xstart), xend)]
+    # return a list of slices
+    return toreturn
+
+
+def _calc_pad(oldnum, newnum):
+    """ Calculate the proper padding for fft_pad
+
+    We have three cases:
+    old number even new number even
+    >>> _calc_pad(10, 16)
+    (3, 3)
+
+    old number odd new number even
+    >>> _calc_pad(11, 16)
+    (2, 3)
+
+    old number odd new number odd
+    >>> _calc_pad(11, 17)
+    (3, 3)
+
+    old number even new number odd
+    >>> _calc_pad(10, 17)
+    (4, 3)
+
+    same numbers
+    >>> _calc_pad(17, 17)
+    (0, 0)
+
+    from larger to smaller.
+    >>> _calc_pad(17, 10)
+    (-4, -3)
+    """
+    # how much do we need to add?
+    width = newnum - oldnum
+    # calculate one side, smaller
+    pad_s = width // 2
+    # calculate the other, bigger
+    pad_b = width - pad_s
+    # if oldnum is odd and newnum is even
+    # we want to pull things backward
+    if oldnum % 2:
+        pad1, pad2 = pad_s, pad_b
+    else:
+        pad1, pad2 = pad_b, pad_s
+    return pad1, pad2
 
 
 def highpass(shape):

@@ -1,3 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# imreg_dph.py
+"""
+Functions for FIB-SEM registration
+
+Copyright (c) 2017, David Hoffman
+"""
 import numpy as np
 import scipy.ndimage.interpolation as ndii
 # three different registration packages

@@ -9,7 +9,7 @@ from skimage.transform import warp
 from skimage.transform import AffineTransform as AffineTransformBase
 import pyfftw
 pyfftw.interfaces.cache.enable()
-from pyfftw.interfaces.numpy_fft import *
+from pyfftw.interfaces.numpy_fft import fft2, ifft2, fftshift
 
 
 class AffineTransform(AffineTransformBase):
@@ -265,8 +265,8 @@ def similarity(im0, im1):
     r0 = abs(f0) * abs(f1)
     ir_cmplx = ifft2((f0 * f1.conjugate()) / r0)
     ir = abs(ir_cmplx)
-    # find max
-    i0, i1 = np.array(np.unravel_index(np.argmax(ir), ir.shape))
+    # find max, this fails to often and screws up when cluster processing.
+    i0, i1 = np.unravel_index(np.argmax(ir), ir.shape)
     di0, di1 = localize_peak(ir[slice_maker(i0, i1, 3)])
     i0, i1 = i0 + di0, i1 + di1
     # calculate the angle
@@ -312,21 +312,35 @@ def _convert_for_cv(im0):
     return im0
 
 
-def register_ECC(im0, im1, warp_mode=cv2.MOTION_AFFINE,
-                 num_iter=50, term_eps=1e-3):
+warp_dict = dict(
+        homography=cv2.MOTION_HOMOGRAPHY,
+        affine=cv2.MOTION_AFFINE,
+        euclidean=cv2.MOTION_EUCLIDEAN,
+        translation=cv2.MOTION_TRANSLATION
+    )
+
+
+def register_ECC(im0, im1, warp_mode="affine",
+                 num_iter=500, term_eps=1e-6):
     """Register im1 to im0 using findTransformECC from OpenCV
 
     Parameters
     ----------
     im0 : ndarray (2d)
+        source image
     im1 : ndarray (2d)
-
+        target image
+    warp_mode : str
+        type of warping
+    num_iter : int
+    term_eps : float
     """
     # make sure images are right type
     im0 = _convert_for_cv(im0)
     im1 = _convert_for_cv(im1)
 
     # Define 2x3 or 3x3 matrices and initialize the matrix to identity
+    warp_mode = warp_dict[warp_mode.lower()]
     if warp_mode == cv2.MOTION_HOMOGRAPHY:
         warp_matrix = np.eye(3, 3, dtype=np.float32)
     else:

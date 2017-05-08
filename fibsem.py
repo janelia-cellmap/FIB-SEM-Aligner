@@ -9,6 +9,7 @@ Copyright (c) 2017, David Hoffman
 import os
 import numpy as np
 
+
 class FIBSEMHeader(object):
     """Structure to hold header info"""
     def __init__(self, **kwargs):
@@ -17,6 +18,23 @@ class FIBSEMHeader(object):
     def update(**kwargs):
         """update internal dictionary"""
         self.__dict__.update(kwargs)
+
+
+class FIBSEMData(np.ndarray):
+    """Subclass of ndarray to attach header data to fibsem data"""
+    def __new__(cls, input_array, header=None):
+        # Input array is an already formed ndarray instance
+        # We first cast to be our class type
+        obj = np.asarray(input_array).view(cls)
+        # add the new attribute to the created instance
+        obj.header = header
+        # Finally, we must return the newly created object:
+        return obj
+
+    def __array_finalize__(self, obj):
+        # see InfoArray.__array_finalize__ for comments
+        if obj is None: return
+        self.header = getattr(obj, 'header', None)
 
 
 class _DTypeDict(object):
@@ -53,10 +71,11 @@ class _DTypeDict(object):
         """return the dtype"""
         return np.dtype(self.dict)
 
+
 def _read_header(fobj):
     # make emtpy header to fill 
-    base_header_dtype = _DTypeDict()
-    base_header_dtype.update(
+    header_dtype = _DTypeDict()
+    header_dtype.update(
             [
                 "FileMagicNum", # Read in magic number, should be 3555587570
                 "FileVersion", # Read in file version number
@@ -70,31 +89,31 @@ def _read_header(fobj):
             [0, 4, 6, 8, 24, 32, 33]
         )
     # read initial header
-    base_header = np.fromfile(fobj, dtype=base_header_dtype.dtype, count=1)
-    FIBSEMData = FIBSEMHeader(**dict(zip(base_header.dtype.names, base_header[0])))
+    base_header = np.fromfile(fobj, dtype=header_dtype.dtype, count=1)
+    fibsem_header = FIBSEMHeader(**dict(zip(base_header.dtype.names, base_header[0])))
     # now fobj is at position 34, return to 0
     fobj.seek(0, os.SEEK_SET)
-    if FIBSEMData.FileMagicNum != 3555587570:
-        raise RuntimeError("FileMagicNum should be 3555587570 but is {}".format(FIBSEMData.FileMagicNum))
+    if fibsem_header.FileMagicNum != 3555587570:
+        raise RuntimeError("FileMagicNum should be 3555587570 but is {}".format(fibsem_header.FileMagicNum))
 
     more_header_dict = {"names": [], "formats": [], "offsets": []}
-    if FIBSEMData.FileVersion == 1:
-        base_header_dtype.update("Scaling", ('>f8', (4, FIBSEMData.ChanNum)), 36)
-    elif FIBSEMData.FileVersion in {2,3,4,5,6}:
-        base_header_dtype.update("Scaling", ('>f4', (4, FIBSEMData.ChanNum)), 36)
+    if fibsem_header.FileVersion == 1:
+        header_dtype.update("Scaling", ('>f8', (fibsem_header.ChanNum, 4)), 36)
+    elif fibsem_header.FileVersion in {2,3,4,5,6}:
+        header_dtype.update("Scaling", ('>f4', (fibsem_header.ChanNum, 4)), 36)
     else:
         # Read in AI channel scaling factors, (col#: AI#), (row#: offset, gain, 2nd order, 3rd order)
-        base_header_dtype.update("Scaling", ('>f4', (4, 2)), 36)
+        header_dtype.update("Scaling", ('>f4', (2, 4)), 36)
 
-    base_header_dtype.update(
+    header_dtype.update(
         ["XResolution",  # X Resolution
         "YResolution"],  # Y Resolution
         ['>u4', '>u4'], 
         [100, 104]
     )
 
-    if FIBSEMData.FileVersion in {1,2,3}:
-        base_header_dtype.update(
+    if fibsem_header.FileVersion in {1,2,3}:
+        header_dtype.update(
                 [
                     "Oversampling",  # AI oversampling
                     "AIDelay",  # Read AI delay (
@@ -103,11 +122,11 @@ def _read_header(fobj):
                 [108, 109]
             )
     else:
-        base_header_dtype.update("Oversampling", '>u2', 108)  # AI oversampling
+        header_dtype.update("Oversampling", '>u2', 108)  # AI oversampling
 
-    base_header_dtype.update("ZeissScanSpeed", '>u1', 111) # Scan speed (Zeiss #)
-    if FIBSEMData.FileVersion in {1,2,3}:
-        base_header_dtype.update(
+    header_dtype.update("ZeissScanSpeed", '>u1', 111) # Scan speed (Zeiss #)
+    if fibsem_header.FileVersion in {1,2,3}:
+        header_dtype.update(
                 [
                     "ScanRate",  # Actual AO (scanning) rate
                     "FramelineRampdownRatio",  # Frameline rampdown ratio
@@ -117,10 +136,10 @@ def _read_header(fobj):
                 [">f8", ">f8", ">f8", ">f8"],
                 [112, 120, 128, 136]
             )
-        # FIBSEMData.Detmin = -10 # Detector minimum voltage
-        # FIBSEMData.Detmax = 10 # Detector maximum voltage
+        # fibsem_header.Detmin = -10 # Detector minimum voltage
+        # fibsem_header.Detmax = 10 # Detector maximum voltage
     else:
-        base_header_dtype.update(
+        header_dtype.update(
             [
                 "ScanRate", # Actual AO (scanning) rate
                 "FramelineRampdownRatio", # Frameline rampdown ratio
@@ -134,7 +153,7 @@ def _read_header(fobj):
             [112, 116, 120, 124, 128, 132, 136]
         )
 
-    base_header_dtype.update(
+    header_dtype.update(
         [
             "AI1", # AI Ch1
             "AI2", # AI Ch2
@@ -146,8 +165,8 @@ def _read_header(fobj):
         [151, 152, 153, 154, 180]
     )
 
-    if FIBSEMData.FileVersion in {1, 2}:
-        base_header_dtype.update(
+    if fibsem_header.FileVersion in {1, 2}:
+        header_dtype.update(
                 [
                     "DetA",  # Name of detector A
                     "DetB",  # Name of detector B
@@ -204,7 +223,7 @@ def _read_header(fobj):
                 ]
             )
     else:
-        base_header_dtype.update(
+        header_dtype.update(
                 [
                     "DetA",  # Name of detector A
                     "DetB",  # Name of detector B
@@ -263,8 +282,8 @@ def _read_header(fobj):
                 ]
             )
 
-    if FIBSEMData.FileVersion in {5,6,7,8}:
-        base_header_dtype.update(
+    if fibsem_header.FileVersion in {5,6,7,8}:
+        header_dtype.update(
                 [
                     "MillingXResolution",  # FIB milling X resolution
                     "MillingYResolution",  # FIB milling Y resolution
@@ -296,8 +315,8 @@ def _read_header(fobj):
                 ]
             )
 
-    if FIBSEMData.FileVersion in {6,7}:
-        base_header_dtype.update(
+    if fibsem_header.FileVersion in {6,7}:
+        header_dtype.update(
                 [
                     "Temperature",  # Temperature (F)
                     "FaradayCupI",  # Faraday cup current (nA)
@@ -311,8 +330,8 @@ def _read_header(fobj):
                 [">f4", ">f4", ">f4", ">f4", ">f4", ">f4", ">f4", ">u4"],
                 [850, 854, 858, 862, 866, 870, 874, 878]
             )
-    if FIBSEMData.FileVersion == 8:
-        base_header_dtype.update(
+    if fibsem_header.FileVersion == 8:
+        header_dtype.update(
                 [
                     "BeamDump2I",  # Beam dump 2 current (nA)
                     "MillingI",  # Milling current (nA)
@@ -320,89 +339,17 @@ def _read_header(fobj):
                 [">f4", ">f4"],
                 [882, 886]
             )
-    base_header_dtype.update("FileLength", ">i8", 1000) # Read in file length in bytes
+    header_dtype.update("FileLength", ">i8", 1000) # Read in file length in bytes
     
     # read header
-    header = np.fromfile(fobj, dtype=base_header_dtype.dtype, count=1)
-    FIBSEMData = FIBSEMHeader(**dict(zip(header.dtype.names, header[0])))
+    header = np.fromfile(fobj, dtype=header_dtype.dtype, count=1)
+    fibsem_header = FIBSEMHeader(**dict(zip(header.dtype.names, header[0])))
 
-    return FIBSEMData
-
-
-def _convert_data(Raw, FIBSEMData):
-    """"""
-    ## Convert raw data to electron counts
-    if FIBSEMData.EightBit == 1:
-        Scaled = np.empty(Raw.shape, dtype=np.float)
-        DetectorA, DetectorB = Raw
-        if FIBSEMData.AI1:
-            DetectorA = Raw[0]
-            Scaled[0] = (Raw[0] * FIBSEMData.ScanRate / FIBSEMData.Scaling[0, 0] / FIBSEMData.Scaling[2, 0] / FIBSEMData.Scaling[3, 0] + FIBSEMData.Scaling[1, 0])
-            if FIBSEMData.AI2:
-                DetectorB = Raw[1]
-                Scaled[1] = Raw[1] * FIBSEMData.ScanRate / FIBSEMData.Scaling[0, 1] / FIBSEMData.Scaling[2, 1] / FIBSEMData.Scaling[3, 1] + FIBSEMData.Scaling[1, 1]
-        
-        elif FIBSEMData.AI2:
-            DetectorB = Raw[0]
-            Scaled[0] = (Raw[0] * FIBSEMData.ScanRate / FIBSEMData.Scaling[0, 0] / FIBSEMData.Scaling[2, 0] / FIBSEMData.Scaling[3, 0] + FIBSEMData.Scaling[1, 0])
-        
-    else:
-        raise NotImplementedError("Don't support non-8 bit files")
-    #     if FIBSEMData.FileVersion in {1,2,3,4,5,6}:
-    #         if FIBSEMData.AI1:
-    #             # Converts raw I16 data to voltage based on scaling factors
-    #             DetectorA = FIBSEMData.Scaling(1,1)+single(Raw(:,1))*FIBSEMData.Scaling(2,1)
-    #             if FIBSEMData.AI2:
-    #                 # Converts raw I16 data to voltage based on scaling factors
-    #                 DetectorB = FIBSEMData.Scaling(1,2)+single(Raw(:,2))*FIBSEMData.Scaling(2,2)
-    #                 if FIBSEMData.AI3:
-    #                     DetectorC = FIBSEMData.Scaling(1,3)+single(Raw(:,3))*FIBSEMData.Scaling(2,3)
-    #                     if FIBSEMData.AI4:
-    #                         DetectorD = FIBSEMData.Scaling(1,4)+single(Raw(:,4))*FIBSEMData.Scaling(2,4)
-    #                 elif FIBSEMData.AI4:
-    #                     DetectorD = FIBSEMData.Scaling(1,3)+single(Raw(:,3))*FIBSEMData.Scaling(2,3)
-                    
-    #             elif FIBSEMData.AI3:
-    #                 DetectorC = FIBSEMData.Scaling(1,2)+single(Raw(:,2))*FIBSEMData.Scaling(2,2)
-    #                 if FIBSEMData.AI4:
-    #                     DetectorD = FIBSEMData.Scaling(1,3)+single(Raw(:,3))*FIBSEMData.Scaling(2,3)
-                    
-    #             elif FIBSEMData.AI4:
-    #                 DetectorD = FIBSEMData.Scaling(1,2)+single(Raw(:,2))*FIBSEMData.Scaling(2,2)
-                
-    #         elif FIBSEMData.AI2:
-    #             DetectorB = FIBSEMData.Scaling(1,1)+single(Raw(:,1))*FIBSEMData.Scaling(2,1)
-    #             if FIBSEMData.AI3:
-    #                 DetectorC = FIBSEMData.Scaling(1,2)+single(Raw(:,2))*FIBSEMData.Scaling(2,2)
-    #                 if FIBSEMData.AI4:
-    #                     DetectorD = FIBSEMData.Scaling(1,3)+single(Raw(:,3))*FIBSEMData.Scaling(2,3)
-                    
-    #             elif FIBSEMData.AI4:
-    #                 DetectorD = FIBSEMData.Scaling(1,2)+single(Raw(:,2))*FIBSEMData.Scaling(2,2)
-                
-    #         elif FIBSEMData.AI3:
-    #             DetectorC = FIBSEMData.Scaling(1,1)+single(Raw(:,1))*FIBSEMData.Scaling(2,1)
-    #             if FIBSEMData.AI4:
-    #                 DetectorD = FIBSEMData.Scaling(1,2)+single(Raw(:,2))*FIBSEMData.Scaling(2,2)
-                
-    #         elif FIBSEMData.AI4:
-    #             DetectorD = FIBSEMData.Scaling(1,1)+single(Raw(:,1))*FIBSEMData.Scaling(2,1)
-                
-    #     if FIBSEMData.FileVersion in {7,8}:
-    #         if FIBSEMData.AI1:
-    #             # Converts raw I16 data to voltage based on scaling factors
-    #             DetectorA = (single(Raw(:,1))-FIBSEMData.Scaling(2,1))*FIBSEMData.Scaling(3,1)
-    #             if FIBSEMData.AI2:
-    #                 DetectorB = (single(Raw(:,2))-FIBSEMData.Scaling(2,2))*FIBSEMData.Scaling(3,2)
-                
-    #         elif FIBSEMData.AI2:
-    #             DetectorB = (single(Raw(:,1))-FIBSEMData.Scaling(2,2))*FIBSEMData.Scaling(3,2)
-
-    return DetectorA, DetectorB, Scaled
+    return fibsem_header
 
 
 def readfibsem(path):
-    """Read raw data file (*.dat) generated from Neon
+    """Read raw_data data file (*.dat) generated from Neon
     Needs PathName and FileName
 
     Rev history
@@ -413,8 +360,8 @@ def readfibsem(path):
     11/25/2012
             added support for file version 5
     6/20/2013
-            read raw data up to
-            [FIBSEMData.ChanNum,FIBSEMData.XResolution*FIBSEMData.YResolution]
+            read raw_data data up to
+            [fibsem_header.ChanNum,fibsem_header.XResolution*fibsem_header.YResolution]
     6/25/2013
             added support for file version 6
     7/10/2013
@@ -425,77 +372,149 @@ def readfibsem(path):
             added file version 8 support
     """
 
-    ## Load raw data file 's' or 'ieee-be.l64' Big-ian ordering, 64-bit long data type
+    ## Load raw_data data file 's' or 'ieee-be.l64' Big-ian ordering, 64-bit long data type
     with open(path, 'rb') as fobj: # Open the file written by LabView (big-ian byte ordering and 64-bit long data type)
         # read header
-        FIBSEMData = _read_header(fobj)
+        fibsem_header = _read_header(fobj)
     # read data
-    if FIBSEMData.EightBit == 1:
-        Raw = np.memmap(path, dtype=">u1", mode="r", offset=1024,
-            shape=(FIBSEMData.YResolution, FIBSEMData.XResolution, FIBSEMData.ChanNum))
+    if fibsem_header.EightBit == 1:
+        raw_data = np.memmap(path, dtype=">u1", mode="r", offset=1024,
+            shape=(fibsem_header.YResolution, fibsem_header.XResolution, fibsem_header.ChanNum))
     else:
-        Raw = np.memmap(path, dtype=">u2", mode="r", offset=1024,
-            shape=(FIBSEMData.YResolution, FIBSEMData.XResolution, FIBSEMData.ChanNum))
-    Raw = np.rollaxis(Raw, 2)
+        raw_data = np.memmap(path, dtype=">u2", mode="r", offset=1024,
+            shape=(fibsem_header.YResolution, fibsem_header.XResolution, fibsem_header.ChanNum))
+    raw_data = np.rollaxis(raw_data, 2)
 
-    return Raw
+    return FIBSEMData(raw_data, fibsem_header)
     
-    # DetectorA, DetectorB, Scaled = _convert_data(Raw, FIBSEMData)
+    # DetectorA, DetectorB, Scaled = _convert_data(raw_data, fibsem_header)
 
     # return DetectorA, DetectorB, Scaled[0], Scaled[1]
 
     ## Construct image files
-    # if FIBSEMData.AI1:
-    #     FIBSEMData.ImageA = (reshape(DetectorA,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #     FIBSEMData.RawImageA = (reshape(Raw(:,1),FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #     if FIBSEMData.AI2:
-    #         FIBSEMData.ImageB = (reshape(DetectorB,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         FIBSEMData.RawImageB = (reshape(Raw(:,2),FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         if FIBSEMData.AI3:
+    # if fibsem_header.AI1:
+    #     fibsem_header.ImageA = (reshape(DetectorA,fibsem_header.XResolution,fibsem_header.YResolution))
+    #     fibsem_header.RawImageA = (reshape(raw_data(:,1),fibsem_header.XResolution,fibsem_header.YResolution))
+    #     if fibsem_header.AI2:
+    #         fibsem_header.ImageB = (reshape(DetectorB,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         fibsem_header.RawImageB = (reshape(raw_data(:,2),fibsem_header.XResolution,fibsem_header.YResolution))
+    #         if fibsem_header.AI3:
     #             raise NotImplementedError
-    #         #     FIBSEMData.ImageC = (reshape(DetectorC,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         #     FIBSEMData.RawImageC = (reshape(Raw(:,3),FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         #     if FIBSEMData.AI4:
-    #         #         FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         #         FIBSEMData.RawImageD = (reshape(Raw(:,4),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    #         #     fibsem_header.ImageC = (reshape(DetectorC,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         #     fibsem_header.RawImageC = (reshape(raw_data(:,3),fibsem_header.XResolution,fibsem_header.YResolution))
+    #         #     if fibsem_header.AI4:
+    #         #         fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         #         fibsem_header.RawImageD = (reshape(raw_data(:,4),fibsem_header.XResolution,fibsem_header.YResolution))
                 
-    #         elif FIBSEMData.AI4:
+    #         elif fibsem_header.AI4:
     #             raise NotImplementedError
-    #             # FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #             # FIBSEMData.RawImageD = (reshape(Raw(:,3),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    #             # fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #             # fibsem_header.RawImageD = (reshape(raw_data(:,3),fibsem_header.XResolution,fibsem_header.YResolution))
             
-    #     elif FIBSEMData.AI3:
-    #         # FIBSEMData.ImageC = (reshape(DetectorC,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         # FIBSEMData.RawImageC = (reshape(Raw(:,2),FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         # if FIBSEMData.AI4:
-    #         #     FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         #     FIBSEMData.RawImageD = (reshape(Raw(:,3),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    #     elif fibsem_header.AI3:
+    #         # fibsem_header.ImageC = (reshape(DetectorC,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         # fibsem_header.RawImageC = (reshape(raw_data(:,2),fibsem_header.XResolution,fibsem_header.YResolution))
+    #         # if fibsem_header.AI4:
+    #         #     fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         #     fibsem_header.RawImageD = (reshape(raw_data(:,3),fibsem_header.XResolution,fibsem_header.YResolution))
             
-    #     elif FIBSEMData.AI4:
-    #         # FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         # FIBSEMData.RawImageD = (reshape(Raw(:,2),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    #     elif fibsem_header.AI4:
+    #         # fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         # fibsem_header.RawImageD = (reshape(raw_data(:,2),fibsem_header.XResolution,fibsem_header.YResolution))
         
-    # elif FIBSEMData.AI2:
-    #     FIBSEMData.ImageB = (reshape(DetectorB,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #     FIBSEMData.RawImageB = (reshape(Raw(:,1),FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #     if FIBSEMData.AI3:
-    #         # FIBSEMData.ImageC = (reshape(DetectorC,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         # FIBSEMData.RawImageC = (reshape(Raw(:,2),FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         if FIBSEMData.AI4:
-    #         #     FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         #     FIBSEMData.RawImageD = (reshape(Raw(:,3),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    # elif fibsem_header.AI2:
+    #     fibsem_header.ImageB = (reshape(DetectorB,fibsem_header.XResolution,fibsem_header.YResolution))
+    #     fibsem_header.RawImageB = (reshape(raw_data(:,1),fibsem_header.XResolution,fibsem_header.YResolution))
+    #     if fibsem_header.AI3:
+    #         # fibsem_header.ImageC = (reshape(DetectorC,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         # fibsem_header.RawImageC = (reshape(raw_data(:,2),fibsem_header.XResolution,fibsem_header.YResolution))
+    #         if fibsem_header.AI4:
+    #         #     fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         #     fibsem_header.RawImageD = (reshape(raw_data(:,3),fibsem_header.XResolution,fibsem_header.YResolution))
             
-    #     elif FIBSEMData.AI4:
-    #         # FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         # FIBSEMData.RawImageD = (reshape(Raw(:,2),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    #     elif fibsem_header.AI4:
+    #         # fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         # fibsem_header.RawImageD = (reshape(raw_data(:,2),fibsem_header.XResolution,fibsem_header.YResolution))
         
-    # elif FIBSEMData.AI3:
-    #     # FIBSEMData.ImageC = (reshape(DetectorC,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #     # FIBSEMData.RawImageC = (reshape(Raw(:,1),FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #     if FIBSEMData.AI4:
-    #         # FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #         # FIBSEMData.RawImageD = (reshape(Raw(:,2),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    # elif fibsem_header.AI3:
+    #     # fibsem_header.ImageC = (reshape(DetectorC,fibsem_header.XResolution,fibsem_header.YResolution))
+    #     # fibsem_header.RawImageC = (reshape(raw_data(:,1),fibsem_header.XResolution,fibsem_header.YResolution))
+    #     if fibsem_header.AI4:
+    #         # fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #         # fibsem_header.RawImageD = (reshape(raw_data(:,2),fibsem_header.XResolution,fibsem_header.YResolution))
         
-    # elif FIBSEMData.AI4:
-    #     # FIBSEMData.ImageD = (reshape(DetectorD,FIBSEMData.XResolution,FIBSEMData.YResolution))
-    #     # FIBSEMData.RawImageD = (reshape(Raw(:,1),FIBSEMData.XResolution,FIBSEMData.YResolution))
+    # elif fibsem_header.AI4:
+    #     # fibsem_header.ImageD = (reshape(DetectorD,fibsem_header.XResolution,fibsem_header.YResolution))
+    #     # fibsem_header.RawImageD = (reshape(raw_data(:,1),fibsem_header.XResolution,fibsem_header.YResolution))
+
+
+def _convert_data(raw_data, fibsem_header):
+    """"""
+    ## Convert raw_data data to electron counts
+    if fibsem_header.EightBit == 1:
+        Scaled = np.empty(raw_data.shape, dtype=np.float)
+        DetectorA, DetectorB = raw_data
+        if fibsem_header.AI1:
+            DetectorA = raw_data[0]
+            Scaled[0] = (raw_data[0] * fibsem_header.ScanRate / fibsem_header.Scaling[0, 0] / fibsem_header.Scaling[2, 0] / fibsem_header.Scaling[3, 0] + fibsem_header.Scaling[1, 0])
+            if fibsem_header.AI2:
+                DetectorB = raw_data[1]
+                Scaled[1] = raw_data[1] * fibsem_header.ScanRate / fibsem_header.Scaling[0, 1] / fibsem_header.Scaling[2, 1] / fibsem_header.Scaling[3, 1] + fibsem_header.Scaling[1, 1]
+        
+        elif fibsem_header.AI2:
+            DetectorB = raw_data[0]
+            Scaled[0] = (raw_data[0] * fibsem_header.ScanRate / fibsem_header.Scaling[0, 0] / fibsem_header.Scaling[2, 0] / fibsem_header.Scaling[3, 0] + fibsem_header.Scaling[1, 0])
+        
+    else:
+        raise NotImplementedError("Don't support non-8 bit files")
+    #     if fibsem_header.FileVersion in {1,2,3,4,5,6}:
+    #         if fibsem_header.AI1:
+    #             # Converts raw_data I16 data to voltage based on scaling factors
+    #             DetectorA = fibsem_header.Scaling(1,1)+single(raw_data(:,1))*fibsem_header.Scaling(2,1)
+    #             if fibsem_header.AI2:
+    #                 # Converts raw_data I16 data to voltage based on scaling factors
+    #                 DetectorB = fibsem_header.Scaling(1,2)+single(raw_data(:,2))*fibsem_header.Scaling(2,2)
+    #                 if fibsem_header.AI3:
+    #                     DetectorC = fibsem_header.Scaling(1,3)+single(raw_data(:,3))*fibsem_header.Scaling(2,3)
+    #                     if fibsem_header.AI4:
+    #                         DetectorD = fibsem_header.Scaling(1,4)+single(raw_data(:,4))*fibsem_header.Scaling(2,4)
+    #                 elif fibsem_header.AI4:
+    #                     DetectorD = fibsem_header.Scaling(1,3)+single(raw_data(:,3))*fibsem_header.Scaling(2,3)
+                    
+    #             elif fibsem_header.AI3:
+    #                 DetectorC = fibsem_header.Scaling(1,2)+single(raw_data(:,2))*fibsem_header.Scaling(2,2)
+    #                 if fibsem_header.AI4:
+    #                     DetectorD = fibsem_header.Scaling(1,3)+single(raw_data(:,3))*fibsem_header.Scaling(2,3)
+                    
+    #             elif fibsem_header.AI4:
+    #                 DetectorD = fibsem_header.Scaling(1,2)+single(raw_data(:,2))*fibsem_header.Scaling(2,2)
+                
+    #         elif fibsem_header.AI2:
+    #             DetectorB = fibsem_header.Scaling(1,1)+single(raw_data(:,1))*fibsem_header.Scaling(2,1)
+    #             if fibsem_header.AI3:
+    #                 DetectorC = fibsem_header.Scaling(1,2)+single(raw_data(:,2))*fibsem_header.Scaling(2,2)
+    #                 if fibsem_header.AI4:
+    #                     DetectorD = fibsem_header.Scaling(1,3)+single(raw_data(:,3))*fibsem_header.Scaling(2,3)
+                    
+    #             elif fibsem_header.AI4:
+    #                 DetectorD = fibsem_header.Scaling(1,2)+single(raw_data(:,2))*fibsem_header.Scaling(2,2)
+                
+    #         elif fibsem_header.AI3:
+    #             DetectorC = fibsem_header.Scaling(1,1)+single(raw_data(:,1))*fibsem_header.Scaling(2,1)
+    #             if fibsem_header.AI4:
+    #                 DetectorD = fibsem_header.Scaling(1,2)+single(raw_data(:,2))*fibsem_header.Scaling(2,2)
+                
+    #         elif fibsem_header.AI4:
+    #             DetectorD = fibsem_header.Scaling(1,1)+single(raw_data(:,1))*fibsem_header.Scaling(2,1)
+                
+    #     if fibsem_header.FileVersion in {7,8}:
+    #         if fibsem_header.AI1:
+    #             # Converts raw_data I16 data to voltage based on scaling factors
+    #             DetectorA = (single(raw_data(:,1))-fibsem_header.Scaling(2,1))*fibsem_header.Scaling(3,1)
+    #             if fibsem_header.AI2:
+    #                 DetectorB = (single(raw_data(:,2))-fibsem_header.Scaling(2,2))*fibsem_header.Scaling(3,2)
+                
+    #         elif fibsem_header.AI2:
+    #             DetectorB = (single(raw_data(:,1))-fibsem_header.Scaling(2,2))*fibsem_header.Scaling(3,2)
+
+    return DetectorA, DetectorB, Scaled

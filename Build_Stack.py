@@ -24,38 +24,28 @@ from PyQt5.QtCore import *
 
 print('Finished loading modules')
 
-#This is what %pylab does:
-# import numpy
-# import matplotlib
-# from matplotlib import pylab, mlab, pyplot
-# np = numpy
-# plt = pyplot
-# from IPython.core.pylabtools import figsize, getfigs
-# from pylab import *
-# from numpy import *
 
 def bin_ndarray(ndarray, new_shape, operation='sum'):
     """
     Bins an ndarray in all axes based on the target shape, by summing or
         averaging.
 
-    Number of output dimensions must match number of input dimensions and 
+    Number of output dimensions must match number of input dimensions and
         new axes must divide old ones.
-
     """
     operation = operation.lower()
-    if not operation in ['sum', 'mean']:
+    if operation not in {'sum', 'mean'}:
         raise ValueError("Operation not supported.")
     if ndarray.ndim != len(new_shape):
         raise ValueError("Shape mismatch: {} -> {}".format(ndarray.shape,
                                                            new_shape))
-    compression_pairs = [(d, c//d) for d,c in zip(new_shape,
-                                                  ndarray.shape)]
+    compression_pairs = [(d, c // d) for d, c in zip(new_shape,
+                                                     ndarray.shape)]
     flattened = [l for p in compression_pairs for l in p]
     ndarray = ndarray.reshape(flattened)
     for i in range(len(new_shape)):
         op = getattr(ndarray, operation)
-        ndarray = op(-1*(i+1))
+        ndarray = op(-1 * (i + 1))
     return ndarray
 
 

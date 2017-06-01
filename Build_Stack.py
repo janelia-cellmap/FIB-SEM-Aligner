@@ -177,9 +177,9 @@ class FileList_Window(QWidget):
     def fill_file_table(self):
         n_files = len(self.frame_names)
         if n_files > 0:
-            indices = np.arange(n_files)
+            # indices = np.arange(n_files)
             self.File_Table.setRowCount(n_files)
-            for chunk_name, ind in zip(self.frame_names, indices):
+            for ind, chunk_name in enumerate(self.frame_names):
                 self.File_Table.setItem(ind, 0, QTableWidgetItem(chunk_name))
             print('Table Populated')
 
@@ -190,7 +190,7 @@ class FileList_Window(QWidget):
         self.fill_file_table()
 
     def handleButton_add(self):
-        filename_to_add =  QFileDialog.getOpenFileName(self, 'Select a File to add')
+        filename_to_add = QFileDialog.getOpenFileName(self, 'Select a File to add')
         self.frame_names.append(filename_to_add)
         self.fill_file_table()
 
@@ -202,7 +202,7 @@ class FileList_Window(QWidget):
         # os.chdir(search_directory)
         self.frame_names = glob.glob(search_directory + '/**/*' + file_mask,recursive=True)
         # self.frame_names = sorted(self.frame_names)
-        fr_num = [int(fr_name.split("\\")[-3]) for fr_name in self.frame_names ]
+        fr_num = [int(fr_name.split(os.path.sep)[-3]) for fr_name in self.frame_names ]
         print("Found ",len(self.frame_names)," files, sorting")
         self.frame_names = np.asarray([xx for (yy,xx) in sorted(zip(fr_num,self.frame_names))])
         self.fill_file_table()
@@ -244,22 +244,26 @@ class FileList_Window(QWidget):
                 #   stuff block...
             print('Starting Transfer into: ', test_file_name)
 
-
-            
+            zsteps = 10
+            z_chunks = np.arange(0,dz,np.round(dz/zsteps))
+            if z_chunks[-1] != dz:
+                z_chunks = np.append(z_chunks, dz)
             with tifffile.TiffWriter(test_file_name, bigtiff=True) as tif:
-                chunk_names = frame_names_2D[0,:]
-                print('Transferring data files:  ', chunk_names)
-                x = np.array([io.imread(fr)[yi:ya,xi:xa] for fr in chunk_names])
+                for z_chunk in z_chunks:
+                    chunk_names = frame_names_2D[z_chunk,:]
+                    print('Transferring data files:  ', chunk_names)
+                    x = np.array([io.imread(fr)[crop] for fr in chunk_names])
+                    # new_frame = new_frame/Z_bin
+                    frame_subset = bin_ndarray(np.asarray(x,dtype=np.float32), new_shape=nsh, operation='mean')
+                    tif.save(frame_subset.astype(x.dtype))
+                
+                # chunk_names = frame_names_2D[-1,:]
+                # print('Transferring data files:  ', chunk_names)
+                # x = np.array([io.imread(fr)[yi:ya,xi:xa] for fr in chunk_names])
                 # new_frame = new_frame/Z_bin
-                frame_subset = bin_ndarray(np.asarray(x,dtype=np.float32), new_shape=nsh, operation='mean')
-                tif.save(frame_subset.astype(x.dtype))
-                chunk_names = frame_names_2D[-1,:]
-                print('Transferring data files:  ', chunk_names)
-                x = np.array([io.imread(fr)[yi:ya,xi:xa] for fr in chunk_names])
-                # new_frame = new_frame/Z_bin
-                frame_subset = bin_ndarray(np.asarray(x,dtype=np.float32), new_shape=nsh, operation='mean')
-                tif.save(frame_subset.astype(x.dtype))
-                tif.close()
+                # frame_subset = bin_ndarray(np.asarray(x,dtype=np.float32), new_shape=nsh, operation='mean')
+                # tif.save(frame_subset.astype(x.dtype))
+               #  tif.close()
         return
 
     def handleButton_transform(self):

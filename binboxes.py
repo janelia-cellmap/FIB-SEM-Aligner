@@ -35,11 +35,11 @@ def parse_tile_num(path):
 
 
 @click.command()
-@click.argument("src", type=click.Path(exists=True, file_ok=False,
+@click.argument("src", type=click.Path(exists=True, file_okay=False,
                                        readable=True, allow_dash=False))
-@click.argument("dst", type=click.Path(exists=False, file_ok=False,
+@click.argument("dst", type=click.Path(exists=False, file_okay=False,
                                        writable=True, allow_dash=False))
-@click.option("binning", default=4, help="The number of z-slices to bin")
+@click.option("--binning", default=4, help="The number of z-slices to bin")
 def cli(src, dst, binning):
     """
     Read in fibsem data and bin along z, cropping and
@@ -49,13 +49,19 @@ def cli(src, dst, binning):
     and save in dst
     """
     # get a sorted list of all the files
-    file_list = sorted(glob.glob(src + "/**/0.", recursive=True),
+    click.echo("Searching for files in {} ... ".format(os.path.abspath(src)), nl=False)
+    file_list = sorted(glob.glob(src + "/**/0.*", recursive=True),
                        key=parse_tile_num)
+    click.echo("found {} files".format(len(file_list)))
     # make it an array
     file_array = np.asarray(file_list)
     num_digits = int(np.ceil(np.log10(file_array.size)))
 
-    basename = os.path.abspath(dst, "{:0{}d}.tif".format(num_digits))
+    click.echo("Making DST directory")
+    os.mkdir(dst)
+
+    basename = os.path.abspath(os.path.join(dst, "{{:0{}d}}.tif".format(num_digits)))
+    click.echo("basename is {}".format(basename))
 
     @dask.delayed(pure=True)
     def binner(files, i):
@@ -64,10 +70,11 @@ def cli(src, dst, binning):
         tif.imsave(basename.format(i), data.mean(0).astype(data.dtype),
                    compress=6)
 
-    to_compute = dask.delayed(
-        binner(files, dst, i)
-        for i, files in file_array.reshape(-1, binning)
-    )
+    my_slice = slice(None, file_array.size - file_array.size % binning)
+    to_compute = dask.delayed([
+        binner(files, i)
+        for i, files in enumerate(file_array[my_slice].reshape(-1, binning))
+    ])
     # do the computation.
     to_compute.compute(get=dask.multiprocessing.get)
 

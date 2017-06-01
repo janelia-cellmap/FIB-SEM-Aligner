@@ -384,7 +384,7 @@ def readfibsem(path):
         raw_data = np.memmap(path, dtype=">u2", mode="r", offset=1024,
             shape=(fibsem_header.YResolution, fibsem_header.XResolution, fibsem_header.ChanNum))
     raw_data = np.rollaxis(raw_data, 2)
-
+    # Once read into the FIBSEMData structure it will be in memory, not memmap.
     return FIBSEMData(raw_data, fibsem_header)
     
     # DetectorA, DetectorB, Scaled = _convert_data(raw_data, fibsem_header)
@@ -448,22 +448,22 @@ def readfibsem(path):
     #     # fibsem_header.RawImageD = (reshape(raw_data(:,1),fibsem_header.XResolution,fibsem_header.YResolution))
 
 
-def _convert_data(raw_data, fibsem_header):
+def _convert_data(fibsem):
     """"""
     ## Convert raw_data data to electron counts
-    if fibsem_header.EightBit == 1:
-        Scaled = np.empty(raw_data.shape, dtype=np.float)
-        DetectorA, DetectorB = raw_data
-        if fibsem_header.AI1:
-            DetectorA = raw_data[0]
-            Scaled[0] = (raw_data[0] * fibsem_header.ScanRate / fibsem_header.Scaling[0, 0] / fibsem_header.Scaling[2, 0] / fibsem_header.Scaling[3, 0] + fibsem_header.Scaling[1, 0])
-            if fibsem_header.AI2:
-                DetectorB = raw_data[1]
-                Scaled[1] = raw_data[1] * fibsem_header.ScanRate / fibsem_header.Scaling[0, 1] / fibsem_header.Scaling[2, 1] / fibsem_header.Scaling[3, 1] + fibsem_header.Scaling[1, 1]
+    if fibsem.header.EightBit == 1:
+        Scaled = np.empty(fibsem.shape, dtype=np.int16)
+        DetectorA, DetectorB = fibsem
+        if fibsem.header.AI1:
+            DetectorA = fibsem[0]
+            Scaled[0] = np.int16(fibsem[0] * fibsem.header.ScanRate / fibsem.header.Scaling[0, 0] / fibsem.header.Scaling[0, 2] / fibsem.header.Scaling[0, 3] + fibsem.header.Scaling[0, 1])
+            if fibsem.header.AI2:
+                DetectorB = fibsem[1]
+                Scaled[1] = np.int16(fibsem[1] * fibsem.header.ScanRate / fibsem.header.Scaling[1, 0] / fibsem.header.Scaling[1, 2] / fibsem.header.Scaling[1, 3] + fibsem.header.Scaling[1, 1])
         
-        elif fibsem_header.AI2:
-            DetectorB = raw_data[0]
-            Scaled[0] = (raw_data[0] * fibsem_header.ScanRate / fibsem_header.Scaling[0, 0] / fibsem_header.Scaling[2, 0] / fibsem_header.Scaling[3, 0] + fibsem_header.Scaling[1, 0])
+        elif fibsem.header.AI2:
+            DetectorB = fibsem[0]
+            Scaled[0] = np.int16(fibsem[0] * fibsem.header.ScanRate / fibsem.header.Scaling[0, 0] / fibsem.header.Scaling[0, 2] / fibsem.header.Scaling[0, 3] + fibsem.header.Scaling[0, 1])
         
     else:
         raise NotImplementedError("Don't support non-8 bit files")

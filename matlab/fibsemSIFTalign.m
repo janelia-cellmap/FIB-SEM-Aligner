@@ -20,7 +20,7 @@
 %   added -Xmx4g -XX:+UseCompressedOops for fiji (need to remove -Xmx flag
 %   in /usr/local/Fiji.app/ImageJ.cfg)
 
-
+clc;clear all;
 clearvars;
 
 Dat=0; RawStack=0;
@@ -157,6 +157,7 @@ SIFTalignAffxf=zeros(FileNumber,6);
 SIFTalignAffxf(1,:)=[1 0 0 1 0 0];
 SIFTalignTransxf=SIFTalignAffxf;
 
+display('Starting SIFT align ...')
 parfor_progress(FileNumber-1);
 parfor FileN=2:FileNumber
   [PreFileName,FileName]=FileNamePairs{:,FileN-1};
@@ -164,7 +165,7 @@ parfor FileN=2:FileNumber
     FileName=regexprep(FileName,'.dat',Atiffsuff);
     PreFileName=regexprep(PreFileName,'.dat',Atiffsuff);
   end
-  system(['ImageJ -Xmx4g -XX:+UseCompressedOops -Dpre="' [PathName PreFileName] '" -Dpost="' [PathName FileName] '" -- --headless "Fiji SIFT align.bsh"']);
+  system(['ImageJ -Xmx4g -XX:+UseCompressedOops -Dpre="' [PathName PreFileName] '" -Dpost="' [PathName FileName] '" -- --headless "Fiji SIFT align.bsh" > /dev/null 2>&1']);
   SIFTFileName=[PathName FileName '-SIFT.txt'];
   fid=fopen(SIFTFileName);
   A=textscan(fid,'%s','delimiter','\n','whitespace','');
@@ -191,12 +192,15 @@ parfor FileN=2:FileNumber
 end
 parfor_progress(0); % Clean up
 
+display('... finish SIFT align!')
+
 % replaced Translation only coefficients with Affine coefficients for
 % frames rotate more than 0.5 degrees.
 SIFTalignComboxf=SIFTalignTransxf;
 SIFTalignComboxf(abs(SIFTalignAffxf(:,3))>0.0008,:)=SIFTalignAffxf(abs(SIFTalignAffxf(:,3))>0.0008,:);
 
 %% Generate xf files
+display('Generate xf files')
 fid=fopen([PathName, 'SIFTalignAff.xf'],'w');
 fprintf(fid,'%12.7f%12.7f%12.7f%12.7f%12.3f%12.3f\n', SIFTalignAffxf');
 fclose(fid);
@@ -209,6 +213,7 @@ fclose(fid);
 
 % !rm "Fiji SIFT align.bsh"
 %% Convert tif to mrc and generate aligned mrc file using xg transformation
+display('Convert tif to mrc and generate aligned mrc file using xg transformation')
 if exist([PathName 'rawstack.mrc'],'file')==2 % evaluates if rawstack.mrc exists
   fid=fopen([PathName, 'rawstack.mrc'],'r');
   fseek(fid,0,'bof');
@@ -222,9 +227,12 @@ end
 if RawStack==0  % generates rawstack.mrc if needed
   system(['tif2mrc -g "' PathName '"*InLens.tif "' PathName 'rawstack.mrc"']);
 end
+display('Apply transforms')
 system(['xftoxg -nfit 0 "' PathName '"SIFTalignCombo.xf "' PathName '"SIFTalignCombo.xg']);
 system(['newstack -xform "' PathName '"SIFTalignCombo.xg -mode 0 -scale 0,255 "' PathName '"rawstack.mrc "' PathName '"SIFTalignCombo.mrc']);
 system(['xftoxg -nfit 0 "' PathName '"SIFTalignTrans.xf "' PathName '"SIFTalignTrans.xg']);
 system(['newstack -xform "' PathName '"SIFTalignTrans.xg -mode 0 -scale 0,255 "' PathName '"rawstack.mrc "' PathName '"SIFTalignTrans.mrc']);
 % system(['xftoxg -nfit 0 "' PathName '"SIFTalignAff.xf "' PathName '"SIFTalignAff.xg']);
 % system(['newstack -xform "' PathName '"SIFTalignAff.xg -mode 0 -scale 0,255 "' PathName '"rawstack.mrc "' PathName '"SIFTalignAff.mrc']);
+display('')
+display('Done!')

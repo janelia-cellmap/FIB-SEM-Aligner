@@ -50,7 +50,7 @@ def cli(src, dst, binning):
     """
     # get a sorted list of all the files
     click.echo("Searching for files in {} ... ".format(os.path.abspath(src)), nl=False)
-    file_list = sorted(glob.glob(src + "/**/0.*", recursive=True),
+    file_list = sorted(glob.glob(src + "/**/0/0.*", recursive=True),
                        key=parse_tile_num)
     click.echo("found {} files".format(len(file_list)))
     # make it an array

@@ -158,7 +158,7 @@ SIFTalignAffxf(1,:)=[1 0 0 1 0 0];
 SIFTalignTransxf=SIFTalignAffxf;
 
 parfor_progress(FileNumber-1);
-for FileN=2:FileNumber
+parfor FileN=2:FileNumber
   [PreFileName,FileName]=FileNamePairs{:,FileN-1};
   if Dat==1
     FileName=regexprep(FileName,'.dat',Atiffsuff);

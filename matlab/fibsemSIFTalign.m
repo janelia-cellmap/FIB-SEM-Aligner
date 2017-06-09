@@ -144,7 +144,7 @@ switch computer
   case {'MACI','MACI64'}
     !cp ~/Documents/MATLAB/"Fiji SIFT align.bsh" .
   case {'GLNX86','GLNXA64'}
-    !cp "/usr/local/bin/Fiji SIFT align.bsh" .
+    %!cp "~/bin/Fiji SIFT align.bsh" .
   otherwise
 end
 
@@ -158,13 +158,13 @@ SIFTalignAffxf(1,:)=[1 0 0 1 0 0];
 SIFTalignTransxf=SIFTalignAffxf;
 
 parfor_progress(FileNumber-1);
-parfor FileN=2:FileNumber
+for FileN=2:FileNumber
   [PreFileName,FileName]=FileNamePairs{:,FileN-1};
   if Dat==1
     FileName=regexprep(FileName,'.dat',Atiffsuff);
     PreFileName=regexprep(PreFileName,'.dat',Atiffsuff);
   end
-  system(['ImageJ -Xmx4g -XX:+UseCompressedOops -Dpre="' [PathName PreFileName] '" -Dpost="' [PathName FileName] '" -- --headless "Fiji SIFT align.bsh" > /dev/null 2>&1']);
+  system(['ImageJ -Xmx4g -XX:+UseCompressedOops -Dpre="' [PathName PreFileName] '" -Dpost="' [PathName FileName] '" -- --headless "Fiji SIFT align.bsh"']);
   SIFTFileName=[PathName FileName '-SIFT.txt'];
   fid=fopen(SIFTFileName);
   A=textscan(fid,'%s','delimiter','\n','whitespace','');
@@ -207,7 +207,7 @@ fid=fopen([PathName, 'SIFTalignCombo.xf'],'w');
 fprintf(fid,'%12.7f%12.7f%12.7f%12.7f%12.3f%12.3f\n', SIFTalignComboxf');
 fclose(fid);
 
-!rm "Fiji SIFT align.bsh"
+% !rm "Fiji SIFT align.bsh"
 %% Convert tif to mrc and generate aligned mrc file using xg transformation
 if exist([PathName 'rawstack.mrc'],'file')==2 % evaluates if rawstack.mrc exists
   fid=fopen([PathName, 'rawstack.mrc'],'r');

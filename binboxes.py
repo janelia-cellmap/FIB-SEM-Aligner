@@ -60,7 +60,7 @@ def cli(src, dst, binning):
     click.echo("Making DST directory")
     os.mkdir(dst)
 
-    basename = os.path.abspath(os.path.join(dst, "{{:0{}d}}.tif".format(num_digits)))
+    basename = os.path.abspath(dst + os.path.sep + "{{:0{}d}}.tif".format(num_digits))
     click.echo("basename is {}".format(basename))
 
     @dask.delayed(pure=True)

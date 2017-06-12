@@ -40,17 +40,21 @@ def parse_tile_num(path):
 @click.argument("dst", type=click.Path(exists=False, file_okay=False,
                                        writable=True, allow_dash=False))
 @click.option("--binning", default=4, help="The number of z-slices to bin")
-def cli(src, dst, binning):
+@click.option("--globpat", default="/*/0/*/0/0.png", help="File glob pattern")
+def cli(src, dst, binning, globpat):
     """
     Read in fibsem data and bin along z, cropping and
     binning along xy to be added later
 
-    Read in all files of glob pattern src + "/**/0." bin by `binning`
+    Read in all files of glob pattern src + globpat bin by `binning`
     and save in dst
     """
     # get a sorted list of all the files
-    click.echo("Searching for files in {} ... ".format(os.path.abspath(src)), nl=False)
-    file_list = sorted(glob.glob(src + "/**/0/0.*", recursive=True),
+    click.echo("Searching for files in {} ... ".format(os.path.abspath(src) + globpat), nl=False)
+    if ".tif" in globpat:
+        # sort by name only.
+        parse_tile_num=None
+    file_list = sorted(glob.glob(src + globpat, recursive=True),
                        key=parse_tile_num)
     click.echo("found {} files".format(len(file_list)))
     # make it an array

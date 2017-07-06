@@ -15,7 +15,7 @@ class FIBSEMHeader(object):
     def __init__(self, **kwargs):
         self.__dict__ = kwargs
 
-    def update(**kwargs):
+    def update(self, **kwargs):
         """update internal dictionary"""
         self.__dict__.update(kwargs)
 
@@ -96,7 +96,6 @@ def _read_header(fobj):
     if fibsem_header.FileMagicNum != 3555587570:
         raise RuntimeError("FileMagicNum should be 3555587570 but is {}".format(fibsem_header.FileMagicNum))
 
-    more_header_dict = {"names": [], "formats": [], "offsets": []}
     if fibsem_header.FileVersion == 1:
         header_dtype.update("Scaling", ('>f8', (fibsem_header.ChanNum, 4)), 36)
     elif fibsem_header.FileVersion in {2,3,4,5,6}:
@@ -381,7 +380,7 @@ def readfibsem(path):
         raw_data = np.memmap(path, dtype=">u1", mode="r", offset=1024,
             shape=(fibsem_header.YResolution, fibsem_header.XResolution, fibsem_header.ChanNum))
     else:
-        raw_data = np.memmap(path, dtype=">u2", mode="r", offset=1024,
+        raw_data = np.memmap(path, dtype=">i2", mode="r", offset=1024,
             shape=(fibsem_header.YResolution, fibsem_header.XResolution, fibsem_header.ChanNum))
     raw_data = np.rollaxis(raw_data, 2)
     # Once read into the FIBSEMData structure it will be in memory, not memmap.

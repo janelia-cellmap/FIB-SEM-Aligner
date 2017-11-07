@@ -8,6 +8,7 @@ Copyright (c) 2017, David Hoffman
 """
 import numpy as np
 import scipy.ndimage.interpolation as ndii
+from dphutils import slice_maker
 # three different registration packages
 # not dft based
 import cv2
@@ -46,61 +47,6 @@ class AffineTransform(AffineTransformBase):
 
 AffineTransform.__init__.__doc__ = AffineTransformBase.__init__.__doc__
 AffineTransform.__doc__ = AffineTransformBase.__doc__
-
-
-def slice_maker(y0, x0, width):
-    """
-    A utility function to generate slices for later use.
-
-    Parameters
-    ----------
-    y0 : int
-        center y position of the slice
-    x0 : int
-        center x position of the slice
-    width : int
-        Width of the slice
-
-    Returns
-    -------
-    slices : list
-        A list of slice objects, the first one is for the y dimension and
-        and the second is for the x dimension.
-
-    Notes
-    -----
-    The method will automatically coerce slices into acceptable bounds.
-
-    Examples
-    --------
-    >>> slice_maker(30,20,10)
-    [slice(25, 35, None), slice(15, 25, None)]
-    >>> slice_maker(30,20,25)
-    [slice(18, 43, None), slice(8, 33, None)]
-    """
-    if not np.isrealobj((y0, x0, width)):
-        raise TypeError("`slice_maker` only accepts real input")
-    if width < 0:
-        raise ValueError("width cannot be negative, width = {}".format(width))
-    # ensure integers
-    y0, x0 = np.rint((y0, x0)).astype(int)
-    width = int(np.rint(width))
-    # use _calc_pad
-    half2, half1 = _calc_pad(0, width)
-    ystart = y0 - half1
-    xstart = x0 - half1
-    yend = y0 + half2
-    xend = x0 + half2
-    assert ystart <= yend, "ystart > yend"
-    assert xstart <= xend, "xstart > xend"
-    if yend <= 0:
-        ystart, yend = 0, 0
-    if xend <= 0:
-        xstart, xend = 0, 0
-    # the max calls are to make slice_maker play nice with edges.
-    toreturn = [slice(max(0, ystart), yend), slice(max(0, xstart), xend)]
-    # return a list of slices
-    return toreturn
 
 
 def _calc_pad(oldnum, newnum):
@@ -219,7 +165,7 @@ def translation(im0, im1):
     f1 = fft2(im1)
     ir = fftshift(abs(ifft2((f0 * f1.conjugate()) / (abs(f0) * abs(f1)))))
     t0, t1 = np.unravel_index(np.argmax(ir), shape)
-    dt0, dt1 = localize_peak(ir[slice_maker(t0, t1, 3)])
+    dt0, dt1 = localize_peak(ir[slice_maker((t0, t1), 3)])
     # t0, t1 = t0 + dt0, t1 + dt1
     t0, t1 = np.array((t0, t1)) + np.array((dt0, dt1)) - np.array(shape) // 2
     # if t0 > shape[0] // 2:
@@ -275,7 +221,7 @@ def similarity(im0, im1):
     ir = abs(ir_cmplx)
     # find max, this fails to often and screws up when cluster processing.
     i0, i1 = np.unravel_index(np.argmax(ir), ir.shape)
-    di0, di1 = localize_peak(ir[slice_maker(i0, i1, 3)])
+    di0, di1 = localize_peak(ir[slice_maker((i0, i1), 3)])
     i0, i1 = i0 + di0, i1 + di1
     # calculate the angle
     angle = i0 / ir.shape[0]
@@ -285,7 +231,7 @@ def similarity(im0, im1):
     if scale > 1.8:
         ir = abs(ir_cmplx.conjugate())
         i0, i1 = np.array(np.unravel_index(np.argmax(ir), ir.shape))
-        di0, di1 = localize_peak(ir[slice_maker(i0, i1, 5)])
+        di0, di1 = localize_peak(ir[slice_maker((i0, i1), 5)])
         i0, i1 = i0 + di0, i1 + di1
         angle = -i0 / ir.shape[0]
         scale = 1.0 / (log_base ** i1)
